@@ -1,224 +1,495 @@
-# LogFlow — Application Log Management Platform
+<div align="center">
 
-## Overview
+<img src="https://img.shields.io/badge/LogFlow-Log%20Management%20Platform-6366f1?style=for-the-badge&logoColor=white" alt="LogFlow" />
 
-LogFlow is a full-stack log management platform that lets developers send structured log entries from their applications and monitor them through a real-time dashboard. It consists of a Node.js/Express backend, a React dashboard, and a lightweight npm SDK that developers install in their own apps to start logging in minutes.
+<br />
+<br />
 
-## Project Structure
+> **A full-stack developer log management platform** — send structured logs from any Node.js app, monitor them in real-time through a beautiful dashboard, and manage everything through a lightweight SDK.
 
-LogFlow is organized as a monorepo with three independently runnable packages:
+<br />
+
+## **Project video:** https://screenrec.com/share/WX0Im7o5KE
+
+<br />
+
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Express](https://img.shields.io/badge/Express-4-000000?style=flat-square&logo=express&logoColor=white)](https://expressjs.com)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb&logoColor=white)](https://mongoosejs.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://reactjs.org)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
+</div>
+
+---
+
+## 📖 Table of Contents
+
+- [Overview](#-overview)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Screenshots](#-screenshots)
+- [Quick Start](#-quick-start)
+- [SDK Usage](#-sdk-usage)
+- [API Reference](#-api-reference)
+- [Environment Variables](#-environment-variables)
+- [Project Structure](#-project-structure)
+- [Documentation](#-documentation)
+- [Git Conventions](#-git-conventions)
+
+---
+
+## 🔍 Overview
+
+**LogFlow** is a log management SaaS platform built for developers who want structured, real-time visibility into what's happening inside their applications.
+
+Instead of scanning raw terminal output or digging through log files, developers install the `logflow-sdk` npm package into their app, call two methods, and immediately start seeing clean, categorized log entries in a live dashboard — with filtering, sorting, pagination, and analytics charts out of the box.
+
+LogFlow is composed of **three independent packages**:
+
+| Package | Description |
+|---|---|
+| `backend/` | REST API built with Node.js, Express, and MongoDB |
+| `frontend/` | React dashboard built with Vite and Tailwind CSS |
+| `sdk/` | Lightweight npm package (`logflow-sdk`) for sending logs |
+
+---
+
+## ✨ Features
+
+### 👤 Developer Account
+- Secure registration and login with hashed passwords (bcrypt)
+- JWT authentication stored in `httpOnly` cookies (XSS-safe)
+- Unique API key per developer — auto-generated, permanent, and visible on the dashboard
+- Rate-limited login endpoint (10 req / 15 min) to prevent brute force attacks
+
+### 📦 Application Management
+- Create named applications (globally unique, no whitespace)
+- Delete applications with a confirmation prompt
+- View all your applications in a responsive card grid
+
+### 📋 Log Management
+- Log entries have three severity levels: `INFO`, `WARN`, `ERROR`
+- **Upsert deduplication**: identical messages increment a `count` field instead of creating duplicates
+- `createdAt` = first occurrence (immutable), `updatedAt` = last occurrence (always fresh)
+- Full filtering: by level, by message substring search
+- Sorting: by most recent (default) or most occurred
+- Pagination: 10 per page, with total count and page range display
+
+### 📊 Analytics Charts
+- **Pie chart** — live ratio of INFO / WARN / ERROR log levels
+- **Line graph** — log activity per day over the last 7 days (3 separate lines per level)
+
+### 🔌 SDK (`logflow-sdk`)
+- Two-method API: `init()` and `log()`
+- Fire-and-forget: network failures never crash the caller's app
+- Input validation before any network call
+- Node.js module caching ensures singleton behavior
+
+---
+
+## 🏗 Architecture
 
 ```
-logflow/
-├── backend/          ← Express REST API + MongoDB
-│   ├── config/
-│   ├── controllers/
-│   ├── middleware/
-│   ├── models/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-├── frontend/         ← React dashboard (Vite)
-│   ├── src/
-│   ├── index.html
-│   ├── package.json
-│   ├── postcss.config.js
-│   ├── tailwind.config.js
-│   └── vite.config.js
-├── sdk/              ← npm package for app logging
-│   ├── src/
-│   └── package.json
-├── docs/             ← project documentation
-└── screenshots/      ← UI and demo assets
+┌─────────────────────────────────────────────────────────────┐
+│                        Developer App                        │
+│                                                             │
+│   const logger = require('logflow-sdk')                    │
+│   logger.init({ apiKey, appName })                         │
+│   logger.log('Server started', 'INFO')  ──────────────┐    │
+└───────────────────────────────────────────────────────│────┘
+                                                        │ POST /api/applications/:name/logs
+                                                        │ Header: x-api-key
+                                                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Express REST API                         │
+│                                                             │
+│  Routes → Middleware → Controllers → Services → Models     │
+│                                                             │
+│  Auth:    JWT cookie  (dashboard sessions)                 │
+│  SDK:     x-api-key header (log ingestion only)            │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                        ▼
+              ┌─────────────────┐
+              │    MongoDB      │
+              │                 │
+              │  developers     │
+              │  applications   │
+              │  logs           │
+              └─────────────────┘
+                        ▲
+                        │ Axios + withCredentials
+┌─────────────────────────────────────────────────────────────┐
+│                   React Dashboard                           │
+│                                                             │
+│  Login / Register → Dashboard → App Detail → Charts        │
+│                                                             │
+│  Vite proxy: /api → localhost:5000 (dev)                   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-Each package has its own `package.json` and can be developed, tested, and deployed independently.
-
-## Build & Start
-
-### Install dependencies
-
-Install each package dependencies individually:
-
-```bash
-cd backend
-npm install
-
-cd ../frontend
-npm install
-
-cd ../sdk
-npm install
+### MVC + Service Layer (Backend)
+```
+HTTP Request
+     ↓
+  Routes          (auth.routes.js · app.routes.js · log.routes.js)
+     ↓
+  Middleware       (auth.js — JWT guard · apiKey.js — SDK auth)
+     ↓
+  Controllers      (parse req · call service · send response)
+     ↓
+  Services         (business logic · DB calls · upsert logic)
+     ↓
+  Models           (Developer · Application · Log)
+     ↓
+  MongoDB
 ```
 
-### Start the backend
+---
 
-Create `backend/.env` and then run:
+## 🖼 Screenshots
 
-```bash
-cd backend
-npm run dev
-```
+<div align="center">
 
-### Start the frontend
+### Login & Register
+<img src="./screenshots/Screenshot 2026-05-24 213125.png" width="700" />
 
-```bash
-cd frontend
-npm run dev
-```
+### Dashboard — API Key + Applications
+<img src="./screenshots/Screenshot 2026-05-24 213141.png" width="700" />
+<img src="./screenshots/Screenshot 2026-05-24 213250.png" width="700" />
 
-Visit `http://localhost:5173` for the dashboard.
+### Application Detail — Logs Table
+<img src="./screenshots/Screenshot 2026-05-24 213343.png" width="700" />
+<img src="./screenshots/Screenshot 2026-05-24 213409.png" width="700" />
 
-### Build for production
+### Filtering & Search
+<img src="./screenshots/Screenshot 2026-05-24 213442.png" width="700" />
+<img src="./screenshots/Screenshot 2026-05-24 213456.png" width="700" />
 
-```bash
-cd frontend
-npm run build
-```
+### Charts — Pie + Line Graph
+<img src="./screenshots/Screenshot 2026-05-24 213525.png" width="700" />
+<img src="./screenshots/Screenshot 2026-05-24 213602.png" width="700" />
 
-Preview the built frontend:
+</div>
 
-```bash
-npm run preview
-```
+---
 
-### SDK usage
-
-The `sdk` package is published as `logflow-sdk`. In your own application:
-
-```bash
-npm install logflow-sdk
-```
-
-Then use:
-
-```js
-const logger = require('logflow-sdk');
-
-logger.init({ apiKey: 'your-api-key', appName: 'my-app' });
-logger.log('Server started', 'INFO');
-```
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- MongoDB (local or Atlas)
-- npm 9+
+| Tool | Version |
+|---|---|
+| Node.js | 18 or higher |
+| MongoDB | Local or Atlas |
+| npm | 9 or higher |
 
-### 1. Backend Setup
+### 1 — Clone the repository
 
 ```bash
-git clone https://github.com/mahmoud112001/logflow
-cd logflow/backend
+git clone https://github.com/mahmoud112001/logflow.git
+cd logflow
+```
+
+### 2 — Start the Backend
+
+```bash
+cd backend
 npm install
 ```
 
-Create a `.env` file in `backend/` (see [Environment Variables](#environment-variables) below), then:
+Create `backend/.env`:
+
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/logflow
+JWT_SECRET=your_super_secret_key_change_this
+JWT_EXPIRES_IN=7d
+NODE_ENV=development
+FRONTEND_URL=http://localhost:5173
+```
 
 ```bash
 npm run dev
-# API running at http://localhost:5000
+# ✅  MongoDB connected: localhost
+# ✅  Server running on port 5000 in development mode
 ```
 
-### 2. Frontend Setup
+### 3 — Start the Frontend
 
 ```bash
-cd logflow/frontend
+cd ../frontend
 npm install
 npm run dev
-# Dashboard running at http://localhost:5173
+# ✅  VITE ready at http://localhost:5173
 ```
 
-### 3. SDK Setup
+Open **http://localhost:5173** in your browser.
 
-In your application:
+### 4 — Register & Create an App
+
+1. Go to `/register` → create your account
+2. Your **API key** is shown on the dashboard
+3. Click **Create** and enter an app name (no spaces)
+
+---
+
+## 🔌 SDK Usage
+
+### Install
 
 ```bash
 npm install logflow-sdk
 ```
 
+### Setup
+
 ```js
 const logger = require('logflow-sdk');
 
-logger.init({ apiKey: 'your-api-key', appName: 'my-app' });
-logger.log('Server started', 'INFO');
+// Call once at startup
+logger.init({
+  apiKey: 'your-api-key',       // from the LogFlow dashboard
+  appName: 'my-app',            // must match an app you created
+  baseURL: 'http://localhost:5000'  // default value
+});
 ```
 
-## Screenshots
+### Send Logs
 
-All screenshots in the `screenshots/` folder are shown below.
+```js
+logger.log('Server started on port 3000', 'INFO');
+logger.log('Slow DB query detected — 2.4s', 'WARN');
+logger.log('Unhandled exception in /orders', 'ERROR');
+```
 
-<div style="display:flex; flex-wrap: wrap; gap: 10px;">
-<img src="./screenshots/Screenshot%202026-05-24%20213125.png" alt="Screenshot 2026-05-24 213125" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213141.png" alt="Screenshot 2026-05-24 213141" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213250.png" alt="Screenshot 2026-05-24 213250" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213343.png" alt="Screenshot 2026-05-24 213343" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213409.png" alt="Screenshot 2026-05-24 213409" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213442.png" alt="Screenshot 2026-05-24 213442" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213456.png" alt="Screenshot 2026-05-24 213456" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213525.png" alt="Screenshot 2026-05-24 213525" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213602.png" alt="Screenshot 2026-05-24 213602" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213717.png" alt="Screenshot 2026-05-24 213717" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213728.png" alt="Screenshot 2026-05-24 213728" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213741.png" alt="Screenshot 2026-05-24 213741" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20213758.png" alt="Screenshot 2026-05-24 213758" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20214028.png" alt="Screenshot 2026-05-24 214028" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20214356.png" alt="Screenshot 2026-05-24 214356" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20214526.png" alt="Screenshot 2026-05-24 214526" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20214732.png" alt="Screenshot 2026-05-24 214732" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20215102.png" alt="Screenshot 2026-05-24 215102" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20215129.png" alt="Screenshot 2026-05-24 215129" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20220353.png" alt="Screenshot 2026-05-24 220353" width="300" />
-<img src="./screenshots/Screenshot%202026-05-24%20220444.png" alt="Screenshot 2026-05-24 220444" width="300" />
-</div>
+### Real-world Express Example
 
-> Add a demo GIF as `screenshots/demo.gif` and include it here if you want an animated preview.
+```js
+const express = require('express');
+const logger = require('logflow-sdk');
 
-## Documentation
+logger.init({
+  apiKey: process.env.LOGFLOW_API_KEY,
+  appName: 'my-express-app',
+});
 
-| Document | Description |
+const app = express();
+
+app.listen(3000, () => {
+  logger.log('Server is live', 'INFO');
+});
+
+app.post('/checkout', async (req, res) => {
+  try {
+    // ... process payment
+    logger.log('Payment completed', 'INFO');
+    res.json({ ok: true });
+  } catch (err) {
+    logger.log(`Payment error: ${err.message}`, 'ERROR');
+    res.status(500).json({ error: 'Payment failed' });
+  }
+});
+```
+
+> `log()` is fire-and-forget. Network failures go to `console.warn` — your app **never crashes** due to a logging failure.
+
+---
+
+## 📡 API Reference
+
+### Auth — `/api/users`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/users` | None | Register a new developer |
+| `POST` | `/api/users/login` | None | Login (sets JWT cookie) |
+| `POST` | `/api/users/logout` | JWT Cookie | Logout (clears cookie) |
+
+### Applications — `/api/applications`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/applications` | JWT Cookie | Get all your applications |
+| `POST` | `/api/applications` | JWT Cookie | Create an application |
+| `GET` | `/api/applications/:name` | JWT Cookie | Get application by name |
+| `DELETE` | `/api/applications/:name` | JWT Cookie | Delete an application |
+
+### Logs — `/api/applications/:name/logs`
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/applications/:name/logs` | JWT Cookie | Get logs (filterable, paginated) |
+| `POST` | `/api/applications/:name/logs` | `x-api-key` header | Post a log (SDK use) |
+
+**GET log query params:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `page` | number | `1` | Page number |
+| `limit` | number | `10` | Results per page (max 100) |
+| `level` | string | — | Filter: `INFO`, `WARN`, or `ERROR` |
+| `search` | string | — | Substring match on message |
+| `sort` | string | `recent` | `recent` or `most_occurred` |
+
+---
+
+## 🔐 Security
+
+| Measure | Implementation |
 |---|---|
-| [Backend](./docs/BACKEND.md) | API endpoints, architecture, middleware |
-| [Frontend](./docs/FRONTEND.md) | Dashboard features, component structure |
-| [Database Schema](./docs/SCHEMA.md) | Models, fields, relations, indexes |
-| [Authentication](./docs/AUTH.md) | Auth flow, JWT, API key system |
-| [SDK](./docs/SDK.md) | SDK usage, methods, integration guide |
+| Password hashing | bcryptjs — 12 salt rounds |
+| JWT storage | `httpOnly` cookie — never in `localStorage` |
+| CORS | Locked to `FRONTEND_URL` with `credentials: true` |
+| Security headers | `helmet` applied globally |
+| Rate limiting | 10 login attempts per 15 minutes per IP |
+| API key auth | Server verifies key ownership before accepting logs |
+| Enumeration protection | Same error message for wrong email or wrong password |
 
-## Environment Variables
+---
 
-Create `backend/.env` with the following:
+## 🌍 Environment Variables
+
+Create `backend/.env`:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `PORT` | No | `5000` | Port the Express server listens on |
-| `MONGO_URI` | Yes | — | MongoDB connection string |
-| `JWT_SECRET` | Yes | — | Secret used to sign JWT tokens |
-| `JWT_EXPIRES_IN` | No | `7d` | JWT expiry duration (e.g. `1d`, `7d`, `30d`) |
-| `NODE_ENV` | No | `development` | Set to `production` in deployed environments |
-| `FRONTEND_URL` | Yes | — | Frontend origin allowed by CORS (e.g. `http://localhost:5173`) |
+| `PORT` | No | `5000` | Express server port |
+| `MONGO_URI` | ✅ Yes | — | MongoDB connection string |
+| `JWT_SECRET` | ✅ Yes | — | Secret for signing JWT tokens |
+| `JWT_EXPIRES_IN` | No | `7d` | Token expiry (e.g. `1d`, `7d`) |
+| `NODE_ENV` | No | `development` | Set `production` in deployment |
+| `FRONTEND_URL` | ✅ Yes | — | Allowed CORS origin |
 
-## Git Conventions
+---
+
+## 📁 Project Structure
+
+```
+logflow/
+├── backend/
+│   ├── config/
+│   │   ├── constants.js        ← LOG_LEVELS, pagination, sort options
+│   │   ├── db.js               ← Mongoose connection
+│   │   └── env.js              ← Env validation + frozen config
+│   ├── controllers/
+│   │   ├── app.controller.js   ← Application CRUD handlers
+│   │   ├── auth.controller.js  ← Register, login, logout
+│   │   └── log.controller.js   ← Get logs, post log
+│   ├── middleware/
+│   │   ├── auth.js             ← JWT cookie guard (protect)
+│   │   └── apiKey.js           ← API key ownership validation
+│   ├── models/
+│   │   ├── Developer.js        ← User schema + bcrypt + apiKey gen
+│   │   ├── Application.js      ← App schema + whitespace validator
+│   │   └── Log.js              ← Log schema + compound unique index
+│   ├── routes/
+│   │   ├── auth.routes.js      ← /api/users
+│   │   ├── app.routes.js       ← /api/applications
+│   │   └── log.routes.js       ← /api/applications/:name/logs
+│   ├── services/
+│   │   ├── auth.service.js     ← Register/login business logic
+│   │   ├── app.service.js      ← Application CRUD logic
+│   │   └── log.service.js      ← Log upsert, filter, paginate
+│   ├── utils/
+│   │   ├── AppError.js         ← Operational error class
+│   │   ├── catchAsync.js       ← Async error forwarding wrapper
+│   │   ├── paginate.js         ← Pagination helper
+│   │   └── response.js         ← Unified response formatters
+│   ├── app.js                  ← Express setup, routes, error handler
+│   └── server.js               ← Entry point, DB connect, process guards
+│
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── FilterBar.jsx   ← Debounced search + level + sort controls
+│       │   ├── LogCharts.jsx   ← Pie (level ratio) + Line (7-day) charts
+│       │   ├── LogTable.jsx    ← Table with badges, truncation, skeletons
+│       │   ├── Navbar.jsx      ← Fixed top bar with auth state
+│       │   ├── Pagination.jsx  ← Range display + Prev/Next controls
+│       │   └── PrivateRoute.jsx← Route guard → redirect to /login
+│       ├── context/
+│       │   └── AuthContext.jsx ← Global auth state + localStorage persistence
+│       ├── hooks/
+│       │   └── useAuth.js      ← Context hook with guard
+│       ├── pages/
+│       │   ├── AppDetail.jsx   ← Logs table + charts tabs
+│       │   ├── Dashboard.jsx   ← API key card + application grid
+│       │   ├── Login.jsx       ← Login form
+│       │   ├── Register.jsx    ← Register form
+│       │   └── NotFound.jsx    ← 404 page
+│       └── services/
+│           ├── api.js          ← Axios instance + error interceptor
+│           ├── auth.service.js ← Auth API calls
+│           └── app.service.js  ← App + log API calls
+│
+├── sdk/
+│   └── src/
+│       ├── Logger.js           ← Logger class: init() + log()
+│       └── index.js            ← Singleton export
+│
+├── docs/
+│   ├── BACKEND.md
+│   ├── FRONTEND.md
+│   ├── SCHEMA.md
+│   ├── AUTH.md
+│   └── SDK.md
+│
+└── README.md
+```
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|---|---|
+| [Backend](./docs/BACKEND.md) | API endpoints, MVC architecture, error handling, security |
+| [Frontend](./docs/FRONTEND.md) | Pages, components, state management, API integration |
+| [Database Schema](./docs/SCHEMA.md) | Models, fields, relations, indexes |
+| [Authentication](./docs/AUTH.md) | JWT flow, API key flow, security decisions |
+| [SDK](./docs/SDK.md) | Full SDK reference, integration guide, error handling |
+
+---
+
+## 🔀 Git Conventions
 
 ### Commit Prefixes
 
-| Prefix | When to use |
+| Prefix | Usage |
 |---|---|
 | `feat` | New feature |
 | `fix` | Bug fix |
-| `chore` | Dependency updates, tooling, config |
+| `chore` | Dependencies, config, tooling |
 | `docs` | Documentation only |
-| `refactor` | Code restructuring without behaviour change |
-| `test` | Adding or updating tests |
-| `style` | Formatting, whitespace, no logic change |
+| `refactor` | Restructure without behavior change |
+| `test` | Tests |
+| `style` | Formatting, whitespace |
+
+**Example:**
+```bash
+git commit -m "feat(auth): add JWT middleware with cookie-based token storage"
+git commit -m "fix(log): correct upsert filter to include application scope"
+git commit -m "docs: add SDK integration example to README"
+```
 
 ### Branch Prefixes
 
-| Prefix | When to use |
+| Prefix | Usage |
 |---|---|
 | `feature/` | New functionality |
 | `bugfix/` | Non-critical bug fix |
 | `hotfix/` | Urgent production fix |
 | `docs/` | Documentation updates |
 | `chore/` | Maintenance tasks |
+
+---
+
+<div align="center">
+
+Built with ❤️ using Node.js · Express · MongoDB · React · Vite
+
+</div>
